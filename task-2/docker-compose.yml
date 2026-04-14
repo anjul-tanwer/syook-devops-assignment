@@ -1,0 +1,46 @@
+version: "3.8"
+
+services:
+  nginx:
+    build: ./nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - frontend
+      - backend
+      - lamp
+
+  frontend:
+    build: ./mern/frontend
+
+  backend:
+    build: ./mern/backend
+    env_file:
+      - .env
+    depends_on:
+      - mongo
+
+  mongo:
+    image: mongo:4.4
+    env_file:
+      - .env
+    volumes:
+      - mongo_data:/data/db
+
+  lamp:
+    build: ./lamp
+    env_file:
+      - .env
+    depends_on:
+      - mysql
+
+  mysql:
+    image: mysql:5.7
+    env_file:
+      - .env
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+volumes:
+  mongo_data:
+  mysql_data:

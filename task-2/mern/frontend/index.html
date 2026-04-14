@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<body>
+<h1>MERN Frontend</h1>
+<p id="data"></p>
+
+<script>
+fetch('/api')
+  .then(res => res.json())
+  .then(data => {
+    document.getElementById('data').innerText = data.message;
+  });
+</script>
+
+</body>
+</html>
