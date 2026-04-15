@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout
+    - name: Checkout Code
       uses: actions/checkout@v3
 
     - name: Setup Terraform
@@ -31,18 +31,32 @@ jobs:
     - name: Terraform Apply
       run: |
         cd task-2/terraform
-        terraform apply -auto-approve -var="key_name=${{ secrets.KEY_NAME }}"
-        echo "public_ip=$(terraform output -raw public_ip)" >> $GITHUB_OUTPUT
+        terraform apply -auto-approve \
+          -var="key_name=${{ secrets.KEY_NAME }}"
 
-    - name: Deploy Application
-      uses: appleboy/ssh-action@v0.1.6
-      with:
-        host: ${{ steps.terraform.outputs.public_ip }}
-        username: ubuntu
-        key: ${{ secrets.EC2_SSH_KEY }}
-        script: |
+    # ⏳ Wait for EC2 + Docker to be fully ready
+    - name: Wait for Server to be Ready
+      run: sleep 90
+
+    # 🚀 Deploy directly using SSH (no GitHub output dependency)
+    - name: Deploy Application via SSH
+      run: |
+        cd task-2/terraform
+
+        # Get public IP directly from Terraform
+        IP=$(terraform output -raw public_ip)
+
+        echo "Server IP: $IP"
+
+        # Save SSH key
+        echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
+        chmod 400 key.pem
+
+        # Connect and deploy
+        ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@$IP << 'EOF'
           git clone https://github.com/anjul-tanwer/syook-devops-assignment.git app || true
           cd app/task-2
           git pull
           docker-compose down
           docker-compose up --build -d
+        EOF
