@@ -31,6 +31,30 @@ resource "aws_security_group" "sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    description = "MERN Frontend"
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "MERN Backend"
+    from_port   = 5000
+    to_port     = 5000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "LAMP"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -41,22 +65,34 @@ resource "aws_security_group" "sg" {
 
 # EC2 Instance
 resource "aws_instance" "app" {
-  ami           = var.ami_id
-  instance_type = var.instance_type
-  key_name      = var.key_name
-
+  ami                    = var.ami_id
+  instance_type          = var.instance_type
+  key_name               = var.key_name
   vpc_security_group_ids = [aws_security_group.sg.id]
 
+  associate_public_ip_address = true
+
   user_data = <<-EOF
-              #!/bin/bash
-              apt update -y
-              apt install -y docker.io docker-compose git
-              systemctl start docker
-              systemctl enable docker
-              usermod -aG docker ubuntu
-              EOF
+    #!/bin/bash
+    apt-get update -y
+    apt-get install -y docker.io docker-compose git
+    systemctl start docker
+    systemctl enable docker
+    usermod -aG docker ubuntu
+    EOF
 
   tags = {
-    Name = "task-2-auto-server"
+    Name = "task-2-app-server"
   }
+}
+
+# Outputs
+output "public_ip" {
+  value       = aws_instance.app.public_ip
+  description = "Public IP of EC2"
+}
+
+output "instance_id" {
+  value       = aws_instance.app.id
+  description = "Instance ID"
 }
