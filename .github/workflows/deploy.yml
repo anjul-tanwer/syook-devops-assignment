@@ -19,34 +19,34 @@ jobs:
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
-       aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-       aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-       aws-region: us-east-2
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-2
 
-    - name: Terraform Init -reconfigure
+    - name: Terraform Init
       run: |
         cd task-2/terraform
-        terraform init
+        terraform init -reconfigure
 
     - name: Terraform Apply
       run: |
         cd task-2/terraform
         terraform apply -auto-approve \
           -var="key_name=${{ secrets.KEY_NAME }}"
-      env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
     - name: Get Public IP
       id: get_ip
       run: |
         cd task-2/terraform
         terraform output -raw public_ip > ip.txt
-        IP=$(cat ip.txt | tr -d '\n' | tr -d '\r')
-         echo "ip=$IP" >> $GITHUB_OUTPUT
+        IP=$(cat ip.txt)
+        echo "ip=$IP" >> $GITHUB_OUTPUT
 
     - name: Debug IP
-      run: echo "IP is ${{ steps.get_ip.outputs.ip }}"    
+      run: echo "IP is ${{ steps.get_ip.outputs.ip }}"
+
+    - name: Wait for SSH
+      run: sleep 60
 
     - name: Deploy Application
       uses: appleboy/ssh-action@v0.1.6
