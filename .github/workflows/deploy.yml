@@ -10,247 +10,101 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Step 1 - Checkout Code Start
-      run: echo "Starting pipeline at $(date)"
-    
-    - name: Checkout Code
+    - name: Step 1 - Checkout Code
       uses: actions/checkout@v3
-      continue-on-error: false
-      
-    - name: Checkout completed
-      run: echo "Code checkout successful at $(date)"
 
     - name: Step 2 - Setup Terraform
-      run: echo "Setting up Terraform..."
-    
-    - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2
-      
-    - name: Terraform setup completed
-      run: terraform --version
 
     - name: Step 3 - Configure AWS Credentials
-      run: echo "Configuring AWS access..."
-    
-    - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: us-east-2
-        
-    - name: AWS configured successfully
-      run: aws sts get-caller-identity
 
     - name: Step 4 - Terraform Init
-      run: echo "Initializing Terraform..."
-    
-    - name: Terraform Init
       run: |
         cd task-2/terraform
-        echo "Current directory: $(pwd)"
-        echo "Running terraform init..."
         terraform init -reconfigure
-        echo "Terraform init completed"
-      continue-on-error: false
-      
-    - name: Terraform init successful
-      run: echo "Terraform initialized at $(date)"
 
     - name: Step 5 - Terraform Apply
-      run: echo "Applying Terraform configuration..."
-    
-    - name: Terraform Apply
       run: |
         cd task-2/terraform
-        echo "Running terraform apply..."
         terraform apply -auto-approve \
           -var="key_name=${{ secrets.KEY_NAME }}"
-        echo "Terraform apply completed"
-      continue-on-error: false
-      
-    - name: Terraform apply successful
-      run: echo "Infrastructure created at $(date)"
 
     - name: Step 6 - Get EC2 Public IP
-      run: echo "Retrieving EC2 public IP..."
-    
-    - name: Get EC2 Public IP
       id: get_ip
       run: |
         cd task-2/terraform
-        echo "Current directory: $(pwd)"
-        
-        echo "Running terraform refresh..."
         terraform refresh -var="key_name=${{ secrets.KEY_NAME }}"
-        
-        echo "Listing all outputs..."
-        terraform output
-        
-        echo "Getting raw public IP..."
-        IP=$(terraform output -raw public_ip 2>&1)
-        echo "Raw output: '$IP'"
-        
-        IP=$(echo "$IP" | tr -d '\r\n' | xargs)
-        echo "Cleaned IP: '$IP'"
-        
-        if [ -z "$IP" ] || [ "$IP" = "null" ]; then
-          echo "ERROR: Failed to get valid IP address"
-          echo "All outputs:"
-          terraform output
-          exit 1
-        fi
-        
-        echo "Successfully got IP: $IP"
+        IP=$(terraform output -raw public_ip | tr -d '\r\n' | xargs)
+        echo "Extracted IP: $IP"
         echo "instance_ip=$IP" >> $GITHUB_OUTPUT
-      continue-on-error: false
-      
-    - name: IP retrieved successfully
-      run: |
-        echo "EC2 Public IP: ${{ steps.get_ip.outputs.instance_ip }}"
 
     - name: Step 7 - Save SSH Key
-      run: echo "Saving SSH key to file..."
-    
-    - name: Save SSH Key
       run: |
         echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
         chmod 400 key.pem
-        echo "SSH key saved with permissions 400"
-        ls -la key.pem
-      continue-on-error: false
 
-    - name: Step 8 - Wait for EC2 and Test SSH
-      run: echo "Waiting for EC2 to be ready..."
-    
-    - name: Wait and Test SSH Connection
-      id: ssh_test
+    - name: Step 8 - Wait for SSH
       run: |
         IP="${{ steps.get_ip.outputs.instance_ip }}"
-        echo "Target IP: $IP"
+        echo "Waiting for SSH at $IP"
         
-        echo "Test 1: Check if port 22 is open"
-        for i in {1..10}; do
-          if nc -zv $IP 22 2>&1; then
-            echo "Port 22 is open"
-            break
+        for attempt in {1..30}; do
+          echo "Attempt $attempt/30 - Testing SSH..."
+          if timeout 5 ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i key.pem ubuntu@$IP "exit" 2>/dev/null; then
+            echo "SSH is ready!"
+            exit 0
           fi
-          echo "Attempt $i: Port 22 not open yet, waiting 10s..."
+          echo "SSH not ready, waiting 10 seconds..."
           sleep 10
         done
         
-        echo "Test 2: SSH connection test"
-        for attempt in {1..30}; do
-          echo "SSH attempt $attempt/30..."
-          if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes -i key.pem ubuntu@$IP "echo 'SSH test successful'" 2>&1; then
-            echo "SSH connection successful"
-            exit 0
-          else
-            echo "SSH attempt $attempt failed, waiting 10s..."
-            sleep 10
-          fi
-        done
-        
-        echo "FAILED: Could not establish SSH connection after 30 attempts"
+        echo "Failed to connect to SSH after 30 attempts"
         exit 1
-      continue-on-error: false
-      
-    - name: SSH connection established
-      run: echo "SSH is ready for deployment"
 
     - name: Step 9 - Deploy Application
-      run: echo "Starting application deployment..."
-    
-    - name: Deploy Application via SSH
-      id: deploy
       run: |
         IP="${{ steps.get_ip.outputs.instance_ip }}"
-        echo "Deploying to IP: $IP"
+        echo "Deploying to $IP"
         
-        echo "Checking system info"
         ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@$IP << 'EOF'
-          echo "Hostname: $(hostname)"
-          echo "OS: $(cat /etc/os-release | grep PRETTY_NAME)"
-          echo "Uptime: $(uptime)"
-        EOF
-        
-        echo "Installing or Checking Docker"
-        ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@$IP << 'EOF'
+          set -e
+          
+          echo "=== Installing Docker ==="
           if ! command -v docker &> /dev/null; then
-            echo "Docker not found, installing..."
             sudo apt-get update -y
-            sudo apt-get install -y docker.io docker-compose
+            sudo apt-get install -y docker.io docker-compose git
             sudo systemctl start docker
             sudo systemctl enable docker
             sudo usermod -aG docker ubuntu
-            echo "Docker installed successfully"
-          else
-            echo "Docker already installed: $(docker --version)"
           fi
           
-          sudo systemctl status docker --no-pager
-        EOF
-        
-        echo "Cloning or Updating Repository"
-        ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@$IP << 'EOF'
-          if [ -d "syook-devops-assignment" ]; then
-            echo "Repository exists, pulling latest..."
-            cd syook-devops-assignment
-            git pull
-          else
-            echo "Cloning repository..."
+          echo "=== Cloning Repository ==="
+          if [ ! -d "syook-devops-assignment" ]; then
             git clone https://github.com/anjul-tanwer/syook-devops-assignment.git
-          fi
-        EOF
-        
-        echo "Starting Docker Containers"
-        ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@$IP << 'EOF'
-          cd syook-devops-assignment/task-2
-          echo "Current directory: $(pwd)"
-          ls -la
-          
-          sudo docker compose down 2>/dev/null || sudo docker-compose down 2>/dev/null || echo "No containers to stop"
-          
-          if command -v docker compose &> /dev/null; then
-            sudo docker compose up --build -d
           else
-            sudo docker-compose up --build -d
+            cd syook-devops-assignment && git pull
           fi
           
-          echo "Running containers:"
+          echo "=== Starting Containers ==="
+          cd syook-devops-assignment/task-2
+          sudo docker compose up --build -d || sudo docker-compose up --build -d
+          
+          echo "=== Deployment Complete ==="
           sudo docker ps
         EOF
-        
-        echo "Deployment script completed"
-      continue-on-error: false
-      
-    - name: Step 10 - Final Status Check
-      run: echo "Checking deployment status..."
-    
-    - name: Verify Deployment
+
+    - name: Step 10 - Verify Deployment
       run: |
         IP="${{ steps.get_ip.outputs.instance_ip }}"
-        
-        echo "Final Verification"
-        echo "EC2 IP: $IP"
-        
-        echo "Checking running containers"
-        ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@$IP "sudo docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'"
-        
-        echo ""
         echo "========================================="
-        echo "PIPELINE COMPLETED SUCCESSFULLY"
+        echo "DEPLOYMENT SUCCESSFUL"
         echo "========================================="
-        echo "Access your applications at:"
-        echo "LAMP Stack: http://$IP:8080"
-        echo "MERN Stack: http://$IP:3000"
+        echo "Access your apps at:"
+        echo "LAMP: http://$IP:8080"
+        echo "MERN: http://$IP:3000"
         echo "========================================="
-      continue-on-error: false
-
-    - name: Error Handling
-      if: failure()
-      run: |
-        echo "========================================="
-        echo "PIPELINE FAILED"
-        echo "========================================="
-        echo "Check the logs above to see which step failed"
