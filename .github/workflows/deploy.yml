@@ -31,10 +31,12 @@ jobs:
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
     - name: Get Public IP
+      id: get_ip
       run: |
         cd task-2/terraform
-        IP=$(terraform output -raw public_ip | head -n 1)
-        echo "IP=$IP" >> $GITHUB_ENV
+        IP=$(terraform output -raw public_ip | tr -d '"')
+        echo "ip=$IP" >> $GITHUB_OUTPUT
+
 
     - name: Deploy Application
       uses: appleboy/ssh-action@v0.1.6
