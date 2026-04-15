@@ -10,26 +10,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: ========== STEP 1: Checkout Code ==========
+    - name: Step 1 - Checkout Code Start
       run: echo "Starting pipeline at $(date)"
     
     - name: Checkout Code
       uses: actions/checkout@v3
       continue-on-error: false
       
-    - name: ✅ Checkout completed
+    - name: Checkout completed
       run: echo "Code checkout successful at $(date)"
 
-    - name: ========== STEP 2: Setup Terraform ==========
+    - name: Step 2 - Setup Terraform
       run: echo "Setting up Terraform..."
     
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2
       
-    - name: ✅ Terraform setup completed
+    - name: Terraform setup completed
       run: terraform --version
 
-    - name: ========== STEP 3: Configure AWS Credentials ==========
+    - name: Step 3 - Configure AWS Credentials
       run: echo "Configuring AWS access..."
     
     - name: Configure AWS Credentials
@@ -39,10 +39,10 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: us-east-2
         
-    - name: ✅ AWS configured successfully
+    - name: AWS configured successfully
       run: aws sts get-caller-identity
 
-    - name: ========== STEP 4: Terraform Init ==========
+    - name: Step 4 - Terraform Init
       run: echo "Initializing Terraform..."
     
     - name: Terraform Init
@@ -54,10 +54,10 @@ jobs:
         echo "Terraform init completed"
       continue-on-error: false
       
-    - name: ✅ Terraform init successful
+    - name: Terraform init successful
       run: echo "Terraform initialized at $(date)"
 
-    - name: ========== STEP 5: Terraform Apply ==========
+    - name: Step 5 - Terraform Apply
       run: echo "Applying Terraform configuration..."
     
     - name: Terraform Apply
@@ -69,10 +69,10 @@ jobs:
         echo "Terraform apply completed"
       continue-on-error: false
       
-    - name: ✅ Terraform apply successful
+    - name: Terraform apply successful
       run: echo "Infrastructure created at $(date)"
 
-    - name: ========== STEP 6: Get EC2 Public IP ==========
+    - name: Step 6 - Get EC2 Public IP
       run: echo "Retrieving EC2 public IP..."
     
     - name: Get EC2 Public IP
@@ -91,37 +91,36 @@ jobs:
         IP=$(terraform output -raw public_ip 2>&1)
         echo "Raw output: '$IP'"
         
-        # Clean the IP
         IP=$(echo "$IP" | tr -d '\r\n' | xargs)
         echo "Cleaned IP: '$IP'"
         
         if [ -z "$IP" ] || [ "$IP" = "null" ]; then
-          echo "❌ ERROR: Failed to get valid IP address"
+          echo "ERROR: Failed to get valid IP address"
           echo "All outputs:"
           terraform output
           exit 1
         fi
         
-        echo "✅ Successfully got IP: $IP"
+        echo "Successfully got IP: $IP"
         echo "instance_ip=$IP" >> $GITHUB_OUTPUT
       continue-on-error: false
       
-    - name: ✅ IP retrieved successfully
+    - name: IP retrieved successfully
       run: |
         echo "EC2 Public IP: ${{ steps.get_ip.outputs.instance_ip }}"
 
-    - name: ========== STEP 7: Save SSH Key ==========
+    - name: Step 7 - Save SSH Key
       run: echo "Saving SSH key to file..."
     
     - name: Save SSH Key
       run: |
         echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
         chmod 400 key.pem
-        echo "✅ SSH key saved with permissions 400"
+        echo "SSH key saved with permissions 400"
         ls -la key.pem
       continue-on-error: false
 
-    - name: ========== STEP 8: Wait for EC2 and Test SSH ==========
+    - name: Step 8 - Wait for EC2 and Test SSH
       run: echo "Waiting for EC2 to be ready..."
     
     - name: Wait and Test SSH Connection
@@ -130,46 +129,43 @@ jobs:
         IP="${{ steps.get_ip.outputs.instance_ip }}"
         echo "Target IP: $IP"
         
-        # Test 1: Ping check (ICMP)
-        echo "=== TEST 1: Ping check ==="
+        echo "=== Test 1: Ping check ==="
         if ping -c 3 -W 2 $IP; then
-          echo "✅ Ping successful"
+          echo "Ping successful"
         else
-          echo "⚠️ Ping failed (might be blocked by firewall)"
+          echo "Ping failed (might be blocked by firewall)"
         fi
         
-        # Test 2: Port 22 check
-        echo "=== TEST 2: Check if port 22 is open ==="
+        echo "=== Test 2: Check if port 22 is open ==="
         for i in {1..5}; do
           if nc -zv $IP 22 2>&1; then
-            echo "✅ Port 22 is open"
+            echo "Port 22 is open"
             break
           fi
           echo "Attempt $i: Port 22 not open yet, waiting 10s..."
           sleep 10
         done
         
-        # Test 3: SSH connection test
-        echo "=== TEST 3: SSH connection test ==="
+        echo "=== Test 3: SSH connection test ==="
         for attempt in {1..20}; do
           echo "SSH attempt $attempt/20..."
           if ssh -v -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes -i key.pem ubuntu@$IP "echo 'SSH test successful'" 2>&1; then
-            echo "✅ SSH connection successful!"
+            echo "SSH connection successful"
             exit 0
           else
-            echo "⚠️ SSH attempt $attempt failed"
+            echo "SSH attempt $attempt failed"
             sleep 10
           fi
         done
         
-        echo "❌ FAILED: Could not establish SSH connection after 20 attempts"
+        echo "FAILED: Could not establish SSH connection after 20 attempts"
         exit 1
       continue-on-error: false
       
-    - name: ✅ SSH connection established
+    - name: SSH connection established
       run: echo "SSH is ready for deployment"
 
-    - name: ========== STEP 9: Deploy Application ==========
+    - name: Step 9 - Deploy Application
       run: echo "Starting application deployment..."
     
     - name: Deploy Application via SSH
@@ -186,7 +182,7 @@ jobs:
           echo "Disk space: $(df -h /)"
         EOF
         
-        echo "=== Installing/Checking Docker ==="
+        echo "=== Installing or Checking Docker ==="
         ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@$IP << 'EOF'
           if ! command -v docker &> /dev/null; then
             echo "Docker not found, installing..."
@@ -197,7 +193,7 @@ jobs:
             sudo usermod -aG docker ubuntu
             echo "Docker installed successfully"
           else
-            echo "✅ Docker already installed: $(docker --version)"
+            echo "Docker already installed: $(docker --version)"
           fi
           
           echo "Docker status:"
@@ -205,17 +201,17 @@ jobs:
           sudo docker ps
         EOF
         
-        echo "=== Cloning/Updating Repository ==="
+        echo "=== Cloning or Updating Repository ==="
         ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@$IP << 'EOF'
           if [ -d "syook-devops-assignment" ]; then
             echo "Repository exists, pulling latest..."
             cd syook-devops-assignment
             git pull
-            echo "✅ Git pull completed"
+            echo "Git pull completed"
           else
             echo "Cloning repository..."
             git clone https://github.com/anjul-tanwer/syook-devops-assignment.git
-            echo "✅ Git clone completed"
+            echo "Git clone completed"
           fi
         EOF
         
@@ -236,15 +232,15 @@ jobs:
             sudo docker-compose up --build -d
           fi
           
-          echo "✅ Containers started"
+          echo "Containers started"
           echo "Running containers:"
           sudo docker ps
         EOF
         
-        echo "✅ Deployment script completed"
+        echo "Deployment script completed"
       continue-on-error: false
       
-    - name: ========== STEP 10: Final Status Check ==========
+    - name: Step 10 - Final Status Check
       run: echo "Checking deployment status..."
     
     - name: Verify Deployment
@@ -259,7 +255,7 @@ jobs:
         
         echo ""
         echo "========================================="
-        echo "✅ PIPELINE COMPLETED SUCCESSFULLY"
+        echo "PIPELINE COMPLETED SUCCESSFULLY"
         echo "========================================="
         echo "Access your applications at:"
         echo "LAMP Stack: http://$IP:8080"
@@ -267,11 +263,11 @@ jobs:
         echo "========================================="
       continue-on-error: false
 
-    - name: ========== ERROR HANDLING ==========
+    - name: Error Handling
       if: failure()
       run: |
         echo "========================================="
-        echo "❌ PIPELINE FAILED"
+        echo "PIPELINE FAILED"
         echo "========================================="
         echo "Check the logs above to see which step failed"
         echo ""
@@ -282,7 +278,6 @@ jobs:
         echo "4. Verify AMI is Ubuntu-based (username: ubuntu)"
         echo "========================================="
         
-        # Try to get debug info even if SSH fails
         IP="${{ steps.get_ip.outputs.instance_ip }}"
         if [ ! -z "$IP" ]; then
           echo "Attempting debug connection to $IP..."
