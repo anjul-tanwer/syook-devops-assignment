@@ -82,6 +82,6 @@ resource "aws_instance" "app" {
     EOF
 
   tags = {
-    Name = "task-2-app-server"
+    Name = "task-2-auto-server"
   }
 }
