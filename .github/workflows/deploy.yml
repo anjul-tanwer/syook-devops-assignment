@@ -33,7 +33,8 @@ jobs:
     - name: Get Public IP
       run: |
         cd task-2/terraform
-        echo "IP=$(terraform output -raw public_ip)" >> $GITHUB_ENV
+        IP=$(terraform output -raw public_ip | head -n 1)
+        echo "IP=$IP" >> $GITHUB_ENV
 
     - name: Deploy Application
       uses: appleboy/ssh-action@v0.1.6
