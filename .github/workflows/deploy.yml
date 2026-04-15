@@ -44,11 +44,13 @@ jobs:
         IP=$(terraform output -raw public_ip | tr -d '\n' | tr -d '\r')
         echo "ip=$IP" >> $GITHUB_OUTPUT
 
+    - name: Debug IP
+      run: echo "IP is ${{ steps.get_ip.outputs.ip }}"    
 
     - name: Deploy Application
       uses: appleboy/ssh-action@v0.1.6
       with:
-        host: ${{ env.IP }}
+        host: ${{ steps.get_ip.outputs.ip }}
         username: ubuntu
         key: ${{ secrets.EC2_SSH_KEY }}
         script: |
