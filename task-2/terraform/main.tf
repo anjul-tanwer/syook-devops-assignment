@@ -85,14 +85,3 @@ resource "aws_instance" "app" {
     Name = "task-2-app-server"
   }
 }
-
-# Outputs
-output "public_ip" {
-  value       = aws_instance.app.public_ip
-  description = "Public IP of EC2"
-}
-
-output "instance_id" {
-  value       = aws_instance.app.id
-  description = "Instance ID"
-}
