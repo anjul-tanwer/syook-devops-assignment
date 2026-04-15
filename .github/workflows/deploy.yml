@@ -1,4 +1,4 @@
-name: Full Auto CI/CD with Detailed Logging
+name: Full Auto CI/CD
 
 on:
   push:
@@ -10,71 +10,66 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Step 1 - Checkout Code
+    - name: Checkout Code
       uses: actions/checkout@v3
 
-    - name: Step 2 - Setup Terraform
+    - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2
 
-    - name: Step 3 - Configure AWS Credentials
+    - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: us-east-2
 
-    - name: Step 4 - Terraform Init
+    - name: Terraform Init
       run: |
         cd task-2/terraform
         terraform init -reconfigure
 
-    - name: Step 5 - Terraform Apply
+    - name: Terraform Apply
       run: |
         cd task-2/terraform
         terraform apply -auto-approve \
           -var="key_name=${{ secrets.KEY_NAME }}"
 
-    - name: Step 6 - Get EC2 Public IP
+    - name: Get EC2 Public IP using AWS CLI
       id: get_ip
       run: |
         cd task-2/terraform
-        terraform refresh -var="key_name=${{ secrets.KEY_NAME }}"
-        IP=$(terraform output -raw public_ip | tr -d '\r\n' | xargs)
+        # Get instance ID from terraform state
+        INSTANCE_ID=$(terraform show -json | jq -r '.values.root_module.resources[] | select(.type=="aws_instance" and .name=="app") | .values.id')
+        # Get public IP using AWS CLI (clean output)
+        IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
         echo "Extracted IP: $IP"
         echo "instance_ip=$IP" >> $GITHUB_OUTPUT
 
-    - name: Step 7 - Save SSH Key
+    - name: Save SSH Key
       run: |
         echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
         chmod 400 key.pem
 
-    - name: Step 8 - Wait for SSH
+    - name: Wait for SSH and Deploy
       run: |
         IP="${{ steps.get_ip.outputs.instance_ip }}"
-        echo "Waiting for SSH at $IP"
+        echo "Target IP: $IP"
         
-        for attempt in {1..30}; do
-          echo "Attempt $attempt/30 - Testing SSH..."
-          if timeout 5 ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i key.pem ubuntu@$IP "exit" 2>/dev/null; then
-            echo "SSH is ready!"
-            exit 0
+        # Wait for SSH to be ready
+        for attempt in {1..20}; do
+          echo "SSH attempt $attempt/20..."
+          if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i key.pem ubuntu@$IP "exit" 2>/dev/null; then
+            echo "SSH ready!"
+            break
           fi
-          echo "SSH not ready, waiting 10 seconds..."
           sleep 10
         done
         
-        echo "Failed to connect to SSH after 30 attempts"
-        exit 1
-
-    - name: Step 9 - Deploy Application
-      run: |
-        IP="${{ steps.get_ip.outputs.instance_ip }}"
-        echo "Deploying to $IP"
-        
+        # Deploy
         ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@$IP << 'EOF'
           set -e
           
-          echo "=== Installing Docker ==="
+          # Install Docker if not present
           if ! command -v docker &> /dev/null; then
             sudo apt-get update -y
             sudo apt-get install -y docker.io docker-compose git
@@ -83,28 +78,26 @@ jobs:
             sudo usermod -aG docker ubuntu
           fi
           
-          echo "=== Cloning Repository ==="
+          # Clone and deploy
           if [ ! -d "syook-devops-assignment" ]; then
             git clone https://github.com/anjul-tanwer/syook-devops-assignment.git
           else
-            cd syook-devops-assignment && git pull
+            cd syook-devops-assignment && git pull && cd ..
           fi
           
-          echo "=== Starting Containers ==="
           cd syook-devops-assignment/task-2
           sudo docker compose up --build -d || sudo docker-compose up --build -d
           
-          echo "=== Deployment Complete ==="
+          echo "Deployment complete!"
           sudo docker ps
         EOF
 
-    - name: Step 10 - Verify Deployment
+    - name: Output URLs
       run: |
         IP="${{ steps.get_ip.outputs.instance_ip }}"
         echo "========================================="
         echo "DEPLOYMENT SUCCESSFUL"
         echo "========================================="
-        echo "Access your apps at:"
         echo "LAMP: http://$IP:8080"
         echo "MERN: http://$IP:3000"
         echo "========================================="
