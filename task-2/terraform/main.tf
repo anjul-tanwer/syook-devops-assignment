@@ -1,3 +1,11 @@
+terraform {
+  backend "s3" {
+    bucket = "anjul-terraform-state-12345"
+    key    = "task-2/terraform.tfstate"
+    region = "us-east-2"
+  }
+}
+
 provider "aws" {
   region = var.region
 }
