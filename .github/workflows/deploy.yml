@@ -38,8 +38,7 @@ jobs:
       id: get_ip
       run: |
         cd task-2/terraform
-        terraform output -raw public_ip > ip.txt
-        IP=$(cat ip.txt)
+        IP=$(terraform output -raw public_ip | tail -n 1 | tr -d '\r')
         echo "ip=$IP" >> $GITHUB_OUTPUT
 
     - name: Debug IP
