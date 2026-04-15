@@ -4,7 +4,7 @@ provider "aws" {
 
 # Security Group
 resource "aws_security_group" "sg" {
-  name        = "task-2-sg"
+  name_prefix = "task-2-sg"
   description = "Allow SSH and HTTP"
 
   ingress {
