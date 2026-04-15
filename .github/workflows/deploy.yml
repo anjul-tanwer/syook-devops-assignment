@@ -65,7 +65,10 @@ jobs:
         cd task-2/terraform
         echo "Running terraform apply..."
         terraform apply -auto-approve \
-          -var="key_name=${{ secrets.KEY_NAME }}"
+          -var="key_name=${{ secrets.KEY_NAME }}" \
+          -var="region=us-east-2" \
+          -var="instance_type=t2.large" \
+          -var="ami_id=ami-07062e2a343acc423"
         echo "Terraform apply completed"
       continue-on-error: false
       
@@ -81,8 +84,12 @@ jobs:
         cd task-2/terraform
         echo "Current directory: $(pwd)"
         
-        echo "Running terraform refresh..."
-        terraform refresh
+        echo "Running terraform refresh with variables..."
+        terraform refresh -auto-approve \
+          -var="key_name=${{ secrets.KEY_NAME }}" \
+          -var="region=us-east-2" \
+          -var="instance_type=t2.large" \
+          -var="ami_id=ami-07062e2a343acc423"
         
         echo "Listing all outputs..."
         terraform output
@@ -137,7 +144,7 @@ jobs:
         fi
         
         echo "=== Test 2: Check if port 22 is open ==="
-        for i in {1..5}; do
+        for i in {1..10}; do
           if nc -zv $IP 22 2>&1; then
             echo "Port 22 is open"
             break
@@ -147,18 +154,18 @@ jobs:
         done
         
         echo "=== Test 3: SSH connection test ==="
-        for attempt in {1..20}; do
-          echo "SSH attempt $attempt/20..."
-          if ssh -v -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes -i key.pem ubuntu@$IP "echo 'SSH test successful'" 2>&1; then
+        for attempt in {1..30}; do
+          echo "SSH attempt $attempt/30..."
+          if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes -i key.pem ubuntu@$IP "echo 'SSH test successful'" 2>&1; then
             echo "SSH connection successful"
             exit 0
           else
-            echo "SSH attempt $attempt failed"
+            echo "SSH attempt $attempt failed, waiting 10s..."
             sleep 10
           fi
         done
         
-        echo "FAILED: Could not establish SSH connection after 20 attempts"
+        echo "FAILED: Could not establish SSH connection after 30 attempts"
         exit 1
       continue-on-error: false
       
