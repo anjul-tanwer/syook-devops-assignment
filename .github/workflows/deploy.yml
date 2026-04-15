@@ -65,10 +65,7 @@ jobs:
         cd task-2/terraform
         echo "Running terraform apply..."
         terraform apply -auto-approve \
-          -var="key_name=${{ secrets.KEY_NAME }}" \
-          -var="region=us-east-2" \
-          -var="instance_type=t2.large" \
-          -var="ami_id=ami-07062e2a343acc423"
+          -var="key_name=${{ secrets.KEY_NAME }}"
         echo "Terraform apply completed"
       continue-on-error: false
       
@@ -84,12 +81,8 @@ jobs:
         cd task-2/terraform
         echo "Current directory: $(pwd)"
         
-        echo "Running terraform refresh with variables..."
-        terraform refresh -auto-approve \
-          -var="key_name=${{ secrets.KEY_NAME }}" \
-          -var="region=us-east-2" \
-          -var="instance_type=t2.large" \
-          -var="ami_id=ami-07062e2a343acc423"
+        echo "Running terraform refresh..."
+        terraform refresh -var="key_name=${{ secrets.KEY_NAME }}"
         
         echo "Listing all outputs..."
         terraform output
@@ -136,14 +129,7 @@ jobs:
         IP="${{ steps.get_ip.outputs.instance_ip }}"
         echo "Target IP: $IP"
         
-        echo "=== Test 1: Ping check ==="
-        if ping -c 3 -W 2 $IP; then
-          echo "Ping successful"
-        else
-          echo "Ping failed (might be blocked by firewall)"
-        fi
-        
-        echo "=== Test 2: Check if port 22 is open ==="
+        echo "Test 1: Check if port 22 is open"
         for i in {1..10}; do
           if nc -zv $IP 22 2>&1; then
             echo "Port 22 is open"
@@ -153,7 +139,7 @@ jobs:
           sleep 10
         done
         
-        echo "=== Test 3: SSH connection test ==="
+        echo "Test 2: SSH connection test"
         for attempt in {1..30}; do
           echo "SSH attempt $attempt/30..."
           if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes -i key.pem ubuntu@$IP "echo 'SSH test successful'" 2>&1; then
@@ -181,15 +167,14 @@ jobs:
         IP="${{ steps.get_ip.outputs.instance_ip }}"
         echo "Deploying to IP: $IP"
         
-        echo "=== Checking system info ==="
+        echo "Checking system info"
         ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@$IP << 'EOF'
           echo "Hostname: $(hostname)"
           echo "OS: $(cat /etc/os-release | grep PRETTY_NAME)"
           echo "Uptime: $(uptime)"
-          echo "Disk space: $(df -h /)"
         EOF
         
-        echo "=== Installing or Checking Docker ==="
+        echo "Installing or Checking Docker"
         ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@$IP << 'EOF'
           if ! command -v docker &> /dev/null; then
             echo "Docker not found, installing..."
@@ -203,43 +188,35 @@ jobs:
             echo "Docker already installed: $(docker --version)"
           fi
           
-          echo "Docker status:"
           sudo systemctl status docker --no-pager
-          sudo docker ps
         EOF
         
-        echo "=== Cloning or Updating Repository ==="
+        echo "Cloning or Updating Repository"
         ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@$IP << 'EOF'
           if [ -d "syook-devops-assignment" ]; then
             echo "Repository exists, pulling latest..."
             cd syook-devops-assignment
             git pull
-            echo "Git pull completed"
           else
             echo "Cloning repository..."
             git clone https://github.com/anjul-tanwer/syook-devops-assignment.git
-            echo "Git clone completed"
           fi
         EOF
         
-        echo "=== Starting Docker Containers ==="
+        echo "Starting Docker Containers"
         ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@$IP << 'EOF'
           cd syook-devops-assignment/task-2
           echo "Current directory: $(pwd)"
-          echo "Files in directory:"
           ls -la
           
-          echo "Stopping existing containers..."
           sudo docker compose down 2>/dev/null || sudo docker-compose down 2>/dev/null || echo "No containers to stop"
           
-          echo "Building and starting containers..."
           if command -v docker compose &> /dev/null; then
             sudo docker compose up --build -d
           else
             sudo docker-compose up --build -d
           fi
           
-          echo "Containers started"
           echo "Running containers:"
           sudo docker ps
         EOF
@@ -254,10 +231,10 @@ jobs:
       run: |
         IP="${{ steps.get_ip.outputs.instance_ip }}"
         
-        echo "=== Final Verification ==="
+        echo "Final Verification"
         echo "EC2 IP: $IP"
         
-        echo "=== Checking running containers ==="
+        echo "Checking running containers"
         ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@$IP "sudo docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'"
         
         echo ""
@@ -277,16 +254,3 @@ jobs:
         echo "PIPELINE FAILED"
         echo "========================================="
         echo "Check the logs above to see which step failed"
-        echo ""
-        echo "Common issues:"
-        echo "1. Check if EC2 instance is running in AWS console"
-        echo "2. Verify security group allows port 22"
-        echo "3. Check if key pair is correct"
-        echo "4. Verify AMI is Ubuntu-based (username: ubuntu)"
-        echo "========================================="
-        
-        IP="${{ steps.get_ip.outputs.instance_ip }}"
-        if [ ! -z "$IP" ]; then
-          echo "Attempting debug connection to $IP..."
-          nc -zv $IP 22 || echo "Port 22 is closed - check security group"
-        fi
