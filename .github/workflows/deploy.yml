@@ -31,26 +31,13 @@ jobs:
     - name: Terraform Apply
       run: |
         cd task-2/terraform
-        terraform apply -auto-approve \
-          -var="key_name=${{ secrets.KEY_NAME }}"
-
-    - name: Get Public IP
-      id: get_ip
-      run: |
-        cd task-2/terraform
-        IP=$(terraform output -raw public_ip | tail -n 1 | tr -d '\r')
-        echo "ip=$IP" >> $GITHUB_OUTPUT
-
-    - name: Debug IP
-      run: echo "IP is ${{ steps.get_ip.outputs.ip }}"
-
-    - name: Wait for SSH
-      run: sleep 60
+        terraform apply -auto-approve -var="key_name=${{ secrets.KEY_NAME }}"
+        echo "public_ip=$(terraform output -raw public_ip)" >> $GITHUB_OUTPUT
 
     - name: Deploy Application
       uses: appleboy/ssh-action@v0.1.6
       with:
-        host: ${{ steps.get_ip.outputs.ip }}
+        host: ${{ steps.terraform.outputs.public_ip }}
         username: ubuntu
         key: ${{ secrets.EC2_SSH_KEY }}
         script: |
